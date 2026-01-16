@@ -11,17 +11,20 @@ const App: React.FC = () => {
   const [currentTopic, setCurrentTopic] = useState<Topic>(DEFAULT_TOPICS[0]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [isAiStudio, setIsAiStudio] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const checkApiKey = async () => {
-      // Questo serve solo se stai testando dentro l'ambiente di Google AI Studio
-      if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-        setShowKeyModal(true);
+    // Controlla se siamo in un ambiente AI Studio
+    const checkEnv = async () => {
+      if (window.aistudio) {
+        setIsAiStudio(true);
+        if (!(await window.aistudio.hasSelectedApiKey())) {
+          await window.aistudio.openSelectKey();
+        }
       }
     };
-    checkApiKey();
+    checkEnv();
   }, []);
 
   useEffect(() => {
@@ -29,13 +32,6 @@ const App: React.FC = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
-
-  const handleOpenKeySelector = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      setShowKeyModal(false);
-    }
-  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -65,18 +61,23 @@ const App: React.FC = () => {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
-      let errorMsg = "Si è verificato un problema di connessione.";
+      let errorTitle = "Problema di Connessione";
+      let errorText = "Non riesco a contattare Gemini. Riprova tra poco.";
       
       if (error.message === "MISSING_API_KEY") {
-        errorMsg = "ATTENZIONE: La chiave API non è configurata. Aggiungi API_KEY nelle impostazioni di Vercel e fai il redeploy.";
-      } else if (error.status === 403) {
-        errorMsg = "ERRORE 403: La tua chiave API non è valida o è scaduta.";
+        errorTitle = "Chiave API Mancante";
+        errorText = "La configurazione su Vercel non è completa. Assicurati di aver aggiunto 'API_KEY' nelle impostazioni e di aver fatto un 'Redeploy'.";
+        
+        // Se siamo in AI Studio, offriamo di riaprire il selettore
+        if (isAiStudio && window.aistudio) {
+          window.aistudio.openSelectKey();
+        }
       }
 
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `⚠️ ${errorMsg}`,
+        content: `❌ **${errorTitle}**\n\n${errorText}`,
         timestamp: Date.now(),
       }]);
     } finally {
@@ -85,77 +86,68 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 text-gray-900">
+    <div className="flex flex-col h-screen bg-[#f8f9fc] text-slate-900">
       <Header />
       
-      {showKeyModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center border border-gray-100 animate-in zoom-in duration-300">
-            <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl shadow-inner">🔑</div>
-            <h3 className="text-2xl font-bold mb-3">Configurazione Richiesta</h3>
-            <p className="text-gray-600 mb-8 text-sm">
-              Se sei su Vercel, assicurati di aver configurato la variabile <strong>API_KEY</strong>. Se sei in AI Studio, clicca il tasto qui sotto.
-            </p>
-            <button 
-              onClick={handleOpenKeySelector}
-              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-            >
-              Seleziona Chiave API
-            </button>
-          </div>
-        </div>
-      )}
-
       <main className="flex flex-1 overflow-hidden flex-col md:flex-row">
         <TopicSelector currentTopicId={currentTopic.id} onSelectTopic={(t) => setCurrentTopic(t)} />
         
-        <section className="flex-1 flex flex-col h-full bg-white relative">
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
+        <section className="flex-1 flex flex-col h-full bg-white relative shadow-inner">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-10 space-y-8 scroll-smooth">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center max-w-lg mx-auto space-y-6 animate-in fade-in duration-1000">
-                <div className="w-24 h-24 bg-indigo-50 rounded-[30%] flex items-center justify-center text-5xl mb-2 shadow-sm border border-indigo-100 rotate-3">
-                  {currentTopic.icon}
+              <div className="flex flex-col items-center justify-center h-full text-center max-w-xl mx-auto space-y-8 animate-in fade-in zoom-in duration-700">
+                <div className="relative">
+                  <div className="absolute -inset-4 bg-indigo-500/10 rounded-full blur-2xl animate-pulse"></div>
+                  <div className="w-28 h-28 bg-white rounded-3xl flex items-center justify-center text-6xl shadow-2xl border border-indigo-50 relative z-10 rotate-3">
+                    {currentTopic.icon}
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-3xl font-extrabold text-gray-900 mb-2 tracking-tight">Ciao, come posso aiutarti?</h3>
-                  <p className="text-gray-500 text-lg">
-                    Scegli un argomento a sinistra e iniziamo a conversare.
+                <div className="space-y-4">
+                  <h3 className="text-4xl font-black text-slate-900 tracking-tight">
+                    Ciao! Sono il tuo <span className="text-indigo-600">{currentTopic.name}</span>.
+                  </h3>
+                  <p className="text-slate-500 text-xl leading-relaxed">
+                    Come posso esserti utile oggi? Posso cercare informazioni sul web o aiutarti con i tuoi compiti.
                   </p>
                 </div>
-                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl text-blue-800 text-xs text-left">
-                  <p className="font-bold mb-1 italic">Pro-tip per Vercel:</p>
-                  <ul className="list-disc ml-4 space-y-1">
-                    <li>Aggiungi <b>API_KEY</b> in "Environment Variables".</li>
-                    <li>Fai clic su "Redeploy" per attivare la chiave.</li>
-                    <li>Ignora i warning di build di npm, non bloccano il sito.</li>
-                  </ul>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-left hover:border-indigo-200 transition-colors cursor-pointer" onClick={() => setInput("Quali sono le ultime notizie di oggi?")}>
+                    <p className="text-sm font-bold text-slate-800 mb-1">🔍 Ricerca Web</p>
+                    <p className="text-xs text-slate-500 italic">"Quali sono le ultime notizie di oggi?"</p>
+                  </div>
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-left hover:border-indigo-200 transition-colors cursor-pointer" onClick={() => setInput("Suggeriscimi un'idea per un progetto creativo.")}>
+                    <p className="text-sm font-bold text-slate-800 mb-1">💡 Ispirazione</p>
+                    <p className="text-xs text-slate-500 italic">"Suggeriscimi un'idea creativa."</p>
+                  </div>
                 </div>
               </div>
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex w-full animate-in fade-in slide-in-from-bottom-2 duration-300 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] md:max-w-[70%]`}>
-                  <div className={`p-5 rounded-[24px] shadow-sm leading-relaxed ${
+              <div key={msg.id} className={`flex w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] md:max-w-[75%]`}>
+                  <div className={`p-6 rounded-[28px] shadow-sm leading-relaxed transition-all ${
                     msg.role === 'user' 
-                      ? 'bg-indigo-600 text-white rounded-tr-none' 
-                      : 'bg-gray-50 text-gray-800 rounded-tl-none border border-gray-100'
+                      ? 'bg-indigo-600 text-white rounded-tr-none shadow-indigo-200' 
+                      : 'bg-[#f0f2f7] text-slate-800 rounded-tl-none border border-slate-100'
                   }`}>
-                    <p className="text-sm md:text-base whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-sm md:text-[16px] whitespace-pre-wrap font-medium">{msg.content}</p>
+                    
                     {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-200/40">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Fonti:</p>
+                      <div className="mt-6 pt-5 border-t border-slate-200/50">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Riferimenti Verificati:</p>
                         <div className="flex flex-wrap gap-2">
                           {msg.sources.map((source, idx) => (
-                            <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="text-[11px] px-3 py-1.5 bg-white rounded-xl border border-gray-200 text-indigo-600 hover:border-indigo-400 hover:bg-indigo-50 transition-all flex items-center shadow-sm">
-                              {source.title}
+                            <a key={idx} href={source.uri} target="_blank" rel="noopener noreferrer" className="text-[11px] px-3 py-2 bg-white/50 backdrop-blur rounded-xl border border-slate-200 text-indigo-600 hover:border-indigo-400 hover:bg-white transition-all flex items-center shadow-sm">
+                              <span className="mr-1.5 text-xs">🔗</span> {source.title}
                             </a>
                           ))}
                         </div>
                       </div>
                     )}
                   </div>
-                  <p className={`text-[10px] text-gray-400 mt-2 font-medium ${msg.role === 'user' ? 'text-right mr-2' : 'text-left ml-2'}`}>
+                  <p className={`text-[11px] text-slate-400 mt-2 font-semibold ${msg.role === 'user' ? 'text-right mr-3' : 'text-left ml-3'}`}>
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
@@ -164,37 +156,40 @@ const App: React.FC = () => {
 
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-gray-50 px-6 py-4 rounded-3xl rounded-tl-none border border-gray-100 flex items-center space-x-2">
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                <div className="bg-slate-50 px-8 py-5 rounded-3xl rounded-tl-none border border-slate-100 flex items-center space-x-3 shadow-sm">
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="p-4 md:p-8 bg-white/90 backdrop-blur-sm border-t border-gray-100">
-            <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-end gap-3">
-              <div className="flex-1 relative">
+          <div className="p-6 md:p-10 bg-white/80 backdrop-blur-xl border-t border-slate-100">
+            <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-end gap-4">
+              <div className="flex-1 relative group">
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
-                  placeholder="Scrivi un messaggio..."
+                  placeholder="Scrivi qui il tuo messaggio..."
                   rows={1}
-                  className="w-full bg-gray-100 border-transparent focus:bg-white border border-gray-200 rounded-[24px] px-6 py-4 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/30 transition-all resize-none min-h-[58px] text-gray-700"
+                  className="w-full bg-slate-100 border-2 border-transparent focus:bg-white focus:border-indigo-500/20 rounded-[28px] px-8 py-5 focus:outline-none focus:ring-8 focus:ring-indigo-500/5 transition-all resize-none min-h-[64px] text-slate-700 shadow-inner"
                 />
               </div>
               <button
                 type="submit"
                 disabled={!input.trim() || isLoading}
-                className="h-[58px] w-[58px] rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition-all flex items-center justify-center flex-shrink-0 active:scale-90 disabled:opacity-30 disabled:grayscale"
+                className="h-[64px] w-[64px] rounded-full bg-indigo-600 text-white shadow-2xl shadow-indigo-200 hover:bg-indigo-700 hover:scale-105 transition-all flex items-center justify-center flex-shrink-0 active:scale-95 disabled:opacity-30 disabled:grayscale disabled:scale-100"
               >
-                <svg className="w-6 h-6 transform rotate-90" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                <svg className="w-7 h-7 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>
             </form>
+            <p className="text-[10px] text-center text-slate-400 mt-4 font-medium uppercase tracking-tighter">
+              Alimentato da Gemini 3 Flash • Risposte in tempo reale
+            </p>
           </div>
         </section>
       </main>
