@@ -3,22 +3,25 @@ import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Message, Topic } from "../types";
 
 export class GeminiService {
+  private getApiKey(): string | undefined {
+    // Prova a recuperare la chiave da diverse fonti comuni in ambienti serverless/statici
+    return process.env.API_KEY;
+  }
+
   async sendMessage(
     message: string,
     history: Message[],
     topic: Topic
   ): Promise<{ text: string; sources: Array<{ title: string; uri: string }> }> {
     
-    // Su Vercel, process.env.API_KEY viene iniettata durante la build o l'esecuzione.
-    // Assicurati che nelle impostazioni di Vercel la variabile si chiami esattamente API_KEY.
-    const apiKey = process.env.API_KEY;
+    const apiKey = this.getApiKey();
 
-    if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
-      console.error("ERRORE: API_KEY non configurata. Verifica le Environment Variables su Vercel.");
+    if (!apiKey || apiKey === "undefined" || apiKey.length < 5) {
+      console.error("API_KEY mancante o non valida.");
       throw new Error("MISSING_API_KEY");
     }
 
-    // Inizializzazione raccomandata: creare l'istanza subito prima dell'uso
+    // Creiamo l'istanza qui per assicurarci di usare la chiave più recente
     const ai = new GoogleGenAI({ apiKey });
 
     try {
@@ -41,7 +44,7 @@ export class GeminiService {
         },
       });
 
-      const text = response.text || "L'assistente non ha restituito testo.";
+      const text = response.text || "Nessuna risposta ricevuta dal modello.";
       
       const sources: Array<{ title: string; uri: string }> = [];
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
@@ -49,21 +52,18 @@ export class GeminiService {
       if (chunks) {
         chunks.forEach((chunk: any) => {
           if (chunk.web && chunk.web.uri && chunk.web.title) {
-            sources.push({
-              title: chunk.web.title,
-              uri: chunk.web.uri
-            });
+            sources.push({ title: chunk.web.title, uri: chunk.web.uri });
           }
         });
       }
 
-      // Rimuoviamo i duplicati dalle fonti
+      // Filtra duplicati
       const uniqueSources = Array.from(new Set(sources.map(s => s.uri)))
         .map(uri => sources.find(s => s.uri === uri)!);
 
       return { text, sources: uniqueSources };
     } catch (error: any) {
-      console.error("Errore durante la chiamata a Gemini:", error);
+      console.error("Errore API Gemini:", error);
       throw error;
     }
   }
