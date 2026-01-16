@@ -5,7 +5,7 @@ import { Message, Topic } from "../types";
 export class GeminiService {
   private getApiKey(): string | undefined {
     // Prova a recuperare la chiave da diverse fonti comuni in ambienti serverless/statici
-    return process.env.API_KEY;
+    return import.meta.env.VITE_API_KEY;
   }
 
   async sendMessage(
