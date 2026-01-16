@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Gemini Personal Assistant",
+  "description": "Un assistente virtuale intelligente e personalizzabile alimentato da Gemini 3, capace di rispondere a domande su qualsiasi argomento con supporto per la ricerca Google in tempo reale.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
